@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"strings"
 )
 
 type Client struct {
@@ -171,11 +172,52 @@ func initRoom() *Room {
 
 func handleClient(conn net.Conn, s *Server) {
 	defer conn.Close()
-	fmt.Println("Handling client...")
 
-	// TODO
+	// Ask for username
+	conn.Write([]byte("Enter Username: "))
+
+	// Read username
+	buffer := make([]byte, 1024)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		fmt.Println("Error reading username:", err)
+		return
+	}
+
+	username := strings.TrimSpace(string(buffer[:n]))
+	fmt.Printf("Client connected with username: %s\n", username)
+
+	// Add client to server
+	_, err = s.AddClient(username, conn, "general")
+
+	if err != nil {
+		conn.Write([]byte(fmt.Sprintf("Error: %s\n", err.Error())))
+		return
+	}
+
+	conn.Write([]byte("Connected to room: general\n"))
+	conn.Write([]byte("Type messages or commands (/join <room>, /leave, /rooms)\n"))
+
+	// Message loop - keep reading until client disconnects
+	for {
+		bufferMsg := make([]byte, 1024)
+		msg, err := conn.Read(bufferMsg)
+		if err != nil {
+			fmt.Println("Client disconnected:", username)
+			s.RemoveClient(username) // Clean up when they disconnect
+			break
+		}
+
+		msgStr := strings.TrimSpace(string(bufferMsg[:msg]))
+		if msgStr == "" {
+			continue // Skip empty messages
+		}
+
+		// TODO: Add command parsing here later
+		// For now, just broadcast everything
+		s.BroadcastToRoom(username, msgStr)
+	}
 }
-
 func main() {
 
 	server := initServer()
