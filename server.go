@@ -1,4 +1,4 @@
-package terminalchat
+package main
 
 import (
 	"fmt"
@@ -169,6 +169,39 @@ func initRoom() *Room {
 
 }
 
+func handleClient(conn net.Conn, s *Server) {
+	defer conn.Close()
+	fmt.Println("Handling client...")
+
+	// TODO
+}
+
 func main() {
-	_ = initServer()
+
+	server := initServer()
+
+	listener, err := net.Listen("tcp", ":8080")
+	if err != nil {
+		fmt.Println("Error starting server:", err)
+		return
+	}
+
+	defer listener.Close()
+
+	fmt.Println("Chat server started on :8080")
+
+	// Accept connections forever
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection:", err)
+			continue
+		}
+
+		fmt.Println("New client connected!")
+
+		// Handle this client in a separate goroutine
+		go handleClient(conn, &server)
+	}
+
 }
