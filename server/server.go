@@ -135,7 +135,7 @@ func (s *Server) BroadcastToRoom(clientName, message string) error {
 
 	r := s.Rooms[currentRoom]
 
-	formattedMessage := fmt.Sprintf("[%s]: %s\n", clientName, message)
+	formattedMessage := fmt.Sprintf("<%s> %s\n", clientName, message)
 
 	for name, client := range r.Clients {
 		if clientName != name {
@@ -173,44 +173,59 @@ func initRoom() *Room {
 func handleClient(conn net.Conn, s *Server) {
 	defer conn.Close()
 
-	// Ask for username
-	conn.Write([]byte("Enter Username: "))
+	// Username retry loop
+	var username string
 
-	// Read username
-	buffer := make([]byte, 1024)
-	n, err := conn.Read(buffer)
-	if err != nil {
-		fmt.Println("Error reading username:", err)
-		return
+	for {
+		conn.Write([]byte("Enter Username: "))
+
+		buffer := make([]byte, 1024)
+		n, err := conn.Read(buffer)
+		if err != nil {
+			fmt.Println("Error reading username: ", err)
+			return
+		}
+
+		username = strings.TrimSpace(string(buffer[:n]))
+		if username == "" {
+			conn.Write([]byte("Username cannot be empty. Try again.\n"))
+			continue
+		}
+
+		// Try to add client
+		_, err = s.AddClient(username, conn, "general")
+		if err != nil {
+			// Username taken, ask for retry
+			conn.Write([]byte(fmt.Sprintf("Error: %s\nPlease try a different username.\n", err.Error())))
+			continue
+		}
+
+		// Success! Break out of loop
+		break
 	}
 
-	username := strings.TrimSpace(string(buffer[:n]))
 	fmt.Printf("Client connected with username: %s\n", username)
 
-	// Add client to server
-	_, err = s.AddClient(username, conn, "general")
-
-	if err != nil {
-		conn.Write([]byte(fmt.Sprintf("Error: %s\n", err.Error())))
-		return
-	}
-
+	conn.Write([]byte("===============================================================\n"))
+	conn.Write([]byte("|                    TERMINAL CHAT SERVER                    |\n"))
+	conn.Write([]byte("===============================================================\n"))
 	conn.Write([]byte("Connected to room: general\n"))
-	conn.Write([]byte("Type messages or commands (/join <room>, /leave, /rooms, /quit)\n"))
+	conn.Write([]byte("Commands: /join <room>, /leave, /rooms, /quit\n"))
+	conn.Write([]byte("---------------------------------------------------------------\n"))
 
 	// Message loop - keep reading until client disconnects
 	for {
 		bufferMsg := make([]byte, 1024)
 		msg, err := conn.Read(bufferMsg)
 		if err != nil {
-			fmt.Println("Client disconnected:", username)
-			s.RemoveClient(username) // Clean up when they disconnect
+			fmt.Println("Client disconnected: ", username)
+			s.RemoveClient(username)
 			break
 		}
 
 		msgStr := strings.TrimSpace(string(bufferMsg[:msg]))
 		if msgStr == "" {
-			continue // Skip empty messages
+			continue
 		}
 
 		if strings.HasPrefix(msgStr, "/") {
@@ -227,17 +242,103 @@ func handleCommand(command, username string, conn net.Conn, s *Server) {
 
 	switch cmd {
 	case "/rooms":
-		// TODO: List all rooms
+		conn.Write([]byte("Available Rooms:\n"))
+		conn.Write([]byte("================\n"))
+		for roomName, room := range s.Rooms {
+			userCount := len(room.Clients)
+			conn.Write([]byte(fmt.Sprintf("* %s (%d users)\n", roomName, userCount)))
+		}
+		conn.Write([]byte("================\n"))
+
 	case "/join":
-		// TODO: Join a room (parts[1] = room name)
+		if len(parts) < 2 {
+			conn.Write([]byte("[Error] Usage: /join <room_name>\n"))
+			return
+		}
+		roomName := parts[1]
+
+		if s.Rooms[roomName] == nil {
+			newRoom := &Room{
+				Name:    roomName,
+				Clients: make(map[string]*Client),
+			}
+			s.Rooms[roomName] = newRoom
+			conn.Write([]byte(fmt.Sprintf("[Server] Created new room: %s\n", roomName)))
+		}
+
+		err := s.JoinRoom(username, roomName)
+		if err != nil {
+			conn.Write([]byte(fmt.Sprintf("[Error] %s\n", err.Error())))
+			return
+		}
+
+		conn.Write([]byte(fmt.Sprintf("--- Joined room: %s ---\n", roomName)))
+
+		room := s.Rooms[roomName]
+		conn.Write([]byte(fmt.Sprintf("Users in room (%d):\n", len(room.Clients))))
+		for clientName := range room.Clients {
+			if clientName == username {
+				conn.Write([]byte(fmt.Sprintf("* %s (you)\n", clientName)))
+			} else {
+				conn.Write([]byte(fmt.Sprintf("* %s\n", clientName)))
+			}
+		}
+		conn.Write([]byte("------------------------\n"))
+
+		notifyMessage := fmt.Sprintf("*** %s joined the room ***\n", username)
+		for name, client := range room.Clients {
+			if name != username {
+				client.Conn.Write([]byte(notifyMessage))
+			}
+		}
+
 	case "/leave":
-		// TODO: Leave current room
+		currentRoom := s.Clients[username].CurrentRoom
+		if currentRoom == "" {
+			conn.Write([]byte("[Info] You are not in any room\n"))
+			return
+		}
+
+		// Notify others before leaving
+		if s.Rooms[currentRoom] != nil {
+			notifyMessage := fmt.Sprintf("*** %s left the room ***\n", username)
+			for name, client := range s.Rooms[currentRoom].Clients {
+				if name != username {
+					client.Conn.Write([]byte(notifyMessage))
+				}
+			}
+		}
+
+		err := s.LeaveRoom(username)
+		if err != nil {
+			conn.Write([]byte(fmt.Sprintf("[Error] %s\n", err.Error())))
+			return
+		}
+
+		conn.Write([]byte(fmt.Sprintf("--- Left room: %s ---\n", currentRoom)))
+
 	case "/quit":
-		conn.Write([]byte("Goodbye!\n"))
+		// Notify room before quitting
+		currentRoom := s.Clients[username].CurrentRoom
+		if currentRoom != "" && s.Rooms[currentRoom] != nil {
+			notifyMessage := fmt.Sprintf("*** %s disconnected ***\n", username)
+			for name, client := range s.Rooms[currentRoom].Clients {
+				if name != username {
+					client.Conn.Write([]byte(notifyMessage))
+				}
+			}
+		}
+
+		conn.Write([]byte("+-------------------+\n"))
+		conn.Write([]byte("|  Thanks for chat! |\n"))
+		conn.Write([]byte("+-------------------+\n"))
+		s.RemoveClient(username)
 		conn.Close()
 		return
+
 	default:
-		conn.Write([]byte("Unknown command\n"))
+		conn.Write([]byte("[Error] Unknown command\n"))
+		conn.Write([]byte("Available commands: /rooms, /join <room>, /leave, /quit\n"))
 	}
 }
 
