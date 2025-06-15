@@ -196,7 +196,7 @@ func handleClient(conn net.Conn, s *Server) {
 	}
 
 	conn.Write([]byte("Connected to room: general\n"))
-	conn.Write([]byte("Type messages or commands (/join <room>, /leave, /rooms)\n"))
+	conn.Write([]byte("Type messages or commands (/join <room>, /leave, /rooms, /quit)\n"))
 
 	// Message loop - keep reading until client disconnects
 	for {
@@ -213,11 +213,34 @@ func handleClient(conn net.Conn, s *Server) {
 			continue // Skip empty messages
 		}
 
-		// TODO: Add command parsing here later
-		// For now, just broadcast everything
-		s.BroadcastToRoom(username, msgStr)
+		if strings.HasPrefix(msgStr, "/") {
+			handleCommand(msgStr, username, conn, s)
+		} else {
+			s.BroadcastToRoom(username, msgStr)
+		}
 	}
 }
+
+func handleCommand(command, username string, conn net.Conn, s *Server) {
+	parts := strings.Split(command, " ")
+	cmd := parts[0]
+
+	switch cmd {
+	case "/rooms":
+		// TODO: List all rooms
+	case "/join":
+		// TODO: Join a room (parts[1] = room name)
+	case "/leave":
+		// TODO: Leave current room
+	case "/quit":
+		conn.Write([]byte("Goodbye!\n"))
+		conn.Close()
+		return
+	default:
+		conn.Write([]byte("Unknown command\n"))
+	}
+}
+
 func main() {
 
 	server := initServer()
