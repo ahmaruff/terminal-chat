@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 )
 
 type Client struct {
@@ -20,9 +21,12 @@ type Room struct {
 type Server struct {
 	Rooms   map[string]*Room
 	Clients map[string]*Client
+	mu      sync.RWMutex
 }
 
 func (s *Server) AddClient(name string, conn net.Conn, roomName string) (Client, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if s.Rooms[roomName] == nil {
 		return Client{}, fmt.Errorf("Room Not Found!")
@@ -47,6 +51,9 @@ func (s *Server) AddClient(name string, conn net.Conn, roomName string) (Client,
 }
 
 func (s *Server) RemoveClient(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.Clients[name] == nil {
 		return fmt.Errorf("Client not found")
 	}
@@ -62,6 +69,9 @@ func (s *Server) RemoveClient(name string) error {
 }
 
 func (s *Server) JoinRoom(clientName, roomName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.Rooms[roomName] == nil {
 		return fmt.Errorf("Room Not Found!")
 	}
@@ -89,6 +99,9 @@ func (s *Server) JoinRoom(clientName, roomName string) error {
 }
 
 func (s *Server) LeaveRoom(clientName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if s.Clients[clientName] == nil {
 		return fmt.Errorf("Client Not Found")
 	}
@@ -118,6 +131,9 @@ func (s *Server) LeaveRoom(clientName string) error {
 }
 
 func (s *Server) BroadcastToRoom(clientName, message string) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if s.Clients[clientName] == nil {
 		return fmt.Errorf("Client Not Found")
 	}
@@ -146,7 +162,7 @@ func (s *Server) BroadcastToRoom(clientName, message string) error {
 	return nil
 }
 
-func initServer() Server {
+func initServer() *Server {
 	r := initRoom()
 
 	rooms := make(map[string]*Room)
@@ -157,7 +173,7 @@ func initServer() Server {
 		Clients: make(map[string]*Client),
 	}
 
-	return s
+	return &s
 }
 
 func initRoom() *Room {
@@ -398,7 +414,7 @@ func main() {
 		fmt.Println("New client connected!")
 
 		// Handle this client in a separate goroutine
-		go handleClient(conn, &server)
+		go handleClient(conn, server)
 	}
 
 }
