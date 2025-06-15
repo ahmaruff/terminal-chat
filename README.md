@@ -150,8 +150,10 @@ terminal-chat/
 │   └── server.go      # Server implementation with main()
 ├── client/
 │   └── client.go      # Client implementation with main()
+├── LICENSE            # License File (MIT)
 ├── README.md          # This file
-└── go.mod            # Go module file (optional)
+├── .gitignore         # git
+└── go.mod             # Go module file (optional)
 ```
 
 ## Development
