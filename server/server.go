@@ -210,7 +210,7 @@ func handleClient(conn net.Conn, s *Server) {
 	conn.Write([]byte("|                    TERMINAL CHAT SERVER                    |\n"))
 	conn.Write([]byte("===============================================================\n"))
 	conn.Write([]byte("Connected to room: general\n"))
-	conn.Write([]byte("Commands: /join <room>, /leave, /rooms, /quit\n"))
+	conn.Write([]byte("Type messages or commands (type /help for command list)\n"))
 	conn.Write([]byte("---------------------------------------------------------------\n"))
 
 	// Message loop - keep reading until client disconnects
@@ -317,6 +317,37 @@ func handleCommand(command, username string, conn net.Conn, s *Server) {
 
 		conn.Write([]byte(fmt.Sprintf("--- Left room: %s ---\n", currentRoom)))
 
+	case "/who":
+		currentRoom := s.Clients[username].CurrentRoom
+		if currentRoom == "" {
+			conn.Write([]byte("[Info] You are not in any room\n"))
+			return
+		}
+
+		room := s.Rooms[currentRoom]
+		conn.Write([]byte(fmt.Sprintf("Users in room '%s' (%d):\n", currentRoom, len(room.Clients))))
+		conn.Write([]byte("==========================\n"))
+		for clientName := range room.Clients {
+			if clientName == username {
+				conn.Write([]byte(fmt.Sprintf("* %s (you)\n", clientName)))
+			} else {
+				conn.Write([]byte(fmt.Sprintf("* %s\n", clientName)))
+			}
+		}
+		conn.Write([]byte("==========================\n"))
+
+	case "/help":
+		conn.Write([]byte("Available Commands:\n"))
+		conn.Write([]byte("==================\n"))
+		conn.Write([]byte("/help          - Show this help message\n"))
+		conn.Write([]byte("/rooms         - List all available rooms\n"))
+		conn.Write([]byte("/join <room>   - Join or create a room\n"))
+		conn.Write([]byte("/leave         - Leave current room\n"))
+		conn.Write([]byte("/who           - Show users in current room\n"))
+		conn.Write([]byte("/quit          - Disconnect from server\n"))
+		conn.Write([]byte("==================\n"))
+		conn.Write([]byte("Type any message to chat with room members\n"))
+
 	case "/quit":
 		// Notify room before quitting
 		currentRoom := s.Clients[username].CurrentRoom
@@ -338,7 +369,7 @@ func handleCommand(command, username string, conn net.Conn, s *Server) {
 
 	default:
 		conn.Write([]byte("[Error] Unknown command\n"))
-		conn.Write([]byte("Available commands: /rooms, /join <room>, /leave, /quit\n"))
+		conn.Write([]byte("Type /help for available commands\n"))
 	}
 }
 
