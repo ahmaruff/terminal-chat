@@ -13,6 +13,9 @@ A real-time multi-client chat server built with Go, featuring room-based messagi
 - **Command system** - Full set of chat commands
 - **Clean ASCII interface** - Pretty terminal output without external dependencies
 
+## Demo
+<img src="./demo.gif" alt="Terminal Chat Demo" style="width: 100%;" />
+
 ## Commands
 
 | Command | Description |
